@@ -590,7 +590,7 @@ function loadSysinfo() {
       'DATE_OFFSET: ' + (_fakeDateOffset || 0) + 'ms',
       'SIM_DATE: ' + simNow().toISOString(),
       'STORAGE: IndexedDB',
-      'BUILD: OpenWebOS 1.0.2',
+      'BUILD: OpenWebOS 2.0.0',
     ].map(function(s) { return '<div>' + s + '</div>'; }).join('');
   }).catch(function(e) { el.innerHTML = '<div style="color:#f00">Error reading data.</div>'; });
 }
