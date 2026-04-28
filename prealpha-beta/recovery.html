@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>OpenWebOS Recovery</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--orange:#FF6A00;--dark:#1a1a1a;--darker:#111;--card:#222;--border:#333;--text:#e0e0e0;--muted:#888;--red:#e53935;--green:#43a047;--blue:#1e88e5;--yellow:#f9a825}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--darker);font-family:'Roboto Mono',monospace,'Courier New',monospace;color:var(--text)}
+#screen{width:100%;height:100vh;display:flex;flex-direction:column}
+
+/* Status bar */
+#statusbar{background:#000;padding:4px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-bottom:1px solid #333}
+.sb-left{font-size:10px;color:var(--orange);letter-spacing:1px;font-weight:700}
+.sb-right{font-size:10px;color:var(--muted);display:flex;gap:12px}
+
+/* Header */
+#header{background:linear-gradient(180deg,#2a2a2a,#1a1a1a);border-bottom:2px solid var(--orange);padding:10px 14px;flex-shrink:0}
+.hdr-top{display:flex;align-items:center;justify-content:space-between}
+.hdr-logo{font-size:18px;font-weight:700;color:var(--orange);letter-spacing:2px;text-transform:uppercase}
+.hdr-ver{font-size:10px;color:var(--muted);letter-spacing:1px}
+.hdr-device{font-size:11px;color:var(--muted);margin-top:2px;letter-spacing:.5px}
+.hdr-status{font-size:10px;color:var(--green);letter-spacing:1px;text-align:right}
+
+/* Main layout */
+#main{flex:1;display:flex;overflow:hidden}
+
+/* Side nav */
+#sidenav{width:100px;background:#111;border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
+.nav-btn{padding:14px 6px;text-align:center;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;border-bottom:1px solid var(--border);color:var(--muted);transition:.15s;line-height:1.5;user-select:none}
+.nav-btn:hover{background:rgba(255,106,0,0.1);color:var(--orange)}
+.nav-btn.active{background:rgba(255,106,0,0.18);color:var(--orange);border-left:3px solid var(--orange)}
+.nav-icon{font-size:18px;display:block;margin-bottom:4px}
+
+/* Content area */
+#content{flex:1;overflow-y:auto;padding:0;background:var(--dark)}
+#content::-webkit-scrollbar{width:4px}
+#content::-webkit-scrollbar-track{background:#111}
+#content::-webkit-scrollbar-thumb{background:var(--orange);border-radius:2px}
+
+/* Panels */
+.panel{display:none;padding:12px}
+.panel.active{display:block}
+.panel-title{font-size:11px;font-weight:700;color:var(--orange);letter-spacing:2px;text-transform:uppercase;padding:8px 0 10px;border-bottom:1px solid var(--border);margin-bottom:12px}
+
+/* Log output */
+#log-output{background:#000;border:1px solid var(--border);border-radius:4px;padding:10px;font-size:10px;color:#0f0;line-height:1.8;min-height:80px;max-height:120px;overflow-y:auto;margin-bottom:12px;font-family:'Roboto Mono',monospace}
+#log-output::-webkit-scrollbar{width:3px}
+#log-output::-webkit-scrollbar-thumb{background:#0f0}
+
+/* Action buttons */
+.action-btn{width:100%;padding:12px 14px;margin-bottom:8px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;transition:.15s;font-family:'Roboto Mono',monospace}
+.action-btn:hover{border-color:var(--orange);background:rgba(255,106,0,0.1)}
+.action-btn:active{transform:scale(.98)}
+.action-btn.danger{border-color:rgba(229,57,53,0.4);color:var(--red)}
+.action-btn.danger:hover{background:rgba(229,57,53,0.1);border-color:var(--red)}
+.action-btn.success{border-color:rgba(67,160,71,0.4);color:var(--green)}
+.action-btn.success:hover{background:rgba(67,160,71,0.1);border-color:var(--green)}
+.action-btn.warn{border-color:rgba(249,168,37,0.4);color:var(--yellow)}
+.action-btn.warn:hover{background:rgba(249,168,37,0.1);border-color:var(--yellow)}
+.btn-icon{font-size:16px;flex-shrink:0}
+.btn-text{flex:1}
+.btn-label{display:block;font-size:11px}
+.btn-sub{display:block;font-size:9px;color:var(--muted);font-weight:400;margin-top:2px;letter-spacing:.5px;text-transform:none}
+
+/* Input fields */
+.twrp-input{width:100%;background:#000;border:1px solid var(--border);border-radius:4px;padding:9px 12px;color:#0f0;font-size:12px;outline:none;font-family:'Roboto Mono',monospace;margin-bottom:8px}
+.twrp-input:focus{border-color:var(--orange)}
+.twrp-input[type="date"],.twrp-input[type="time"]{color-scheme:dark;color:var(--text)}
+
+/* Section label */
+.section-label{font-size:9px;font-weight:700;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid #2a2a2a}
+
+/* Clock display */
+#dt-clock{background:#000;border:1px solid var(--border);border-radius:4px;padding:10px 14px;margin-bottom:10px;text-align:center}
+#dt-clock-time{font-size:28px;font-weight:700;color:var(--orange);letter-spacing:3px;font-variant-numeric:tabular-nums}
+#dt-clock-date{font-size:10px;color:var(--muted);letter-spacing:1px;margin-top:4px}
+#dt-epoch-warn{display:none;background:rgba(229,57,53,0.15);border:1px solid rgba(229,57,53,0.4);border-radius:4px;padding:7px 10px;font-size:10px;color:var(--red);letter-spacing:.5px;margin-bottom:8px;text-align:center}
+
+/* Mode tabs */
+.mode-tabs{display:flex;gap:4px;margin-bottom:10px}
+.mode-tab{flex:1;padding:8px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--muted);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;text-align:center;font-family:'Roboto Mono',monospace;transition:.15s}
+.mode-tab.active{background:rgba(255,106,0,0.2);border-color:var(--orange);color:var(--orange)}
+
+/* Preset grid */
+.preset-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}
+.preset-btn{padding:8px 4px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);font-size:10px;cursor:pointer;text-align:center;font-family:'Roboto Mono',monospace;transition:.15s;font-weight:700;letter-spacing:.5px}
+.preset-btn:hover{border-color:var(--orange);color:var(--orange)}
+.preset-btn.brick{border-color:rgba(229,57,53,0.4);color:var(--red);grid-column:span 2}
+.preset-btn.brick:hover{background:rgba(229,57,53,0.1);border-color:var(--red)}
+
+/* Bottom bar */
+#bottombar{background:#000;border-top:1px solid var(--border);padding:6px 12px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.bb-text{font-size:9px;color:var(--muted);letter-spacing:1px}
+.bb-status{font-size:9px;color:var(--green);letter-spacing:1px}
+
+/* Progress bar */
+.progress-bar{width:100%;height:4px;background:#333;border-radius:2px;margin:6px 0;overflow:hidden}
+.progress-fill{height:100%;background:var(--orange);border-radius:2px;transition:width .3s;width:0%}
+
+/* Confirm overlay */
+#confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100;display:none;align-items:center;justify-content:center}
+#confirm-overlay.show{display:flex}
+.confirm-box{background:var(--card);border:1px solid var(--orange);border-radius:4px;width:280px;overflow:hidden}
+.confirm-hdr{background:rgba(255,106,0,0.2);padding:10px 14px;font-size:11px;font-weight:700;color:var(--orange);letter-spacing:2px;text-transform:uppercase;border-bottom:1px solid var(--border)}
+.confirm-body{padding:14px;font-size:11px;color:var(--muted);line-height:1.7}
+.confirm-btns{display:flex;border-top:1px solid var(--border)}
+.confirm-btn{flex:1;padding:12px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;background:none;border:none;font-family:'Roboto Mono',monospace;transition:.15s}
+.confirm-btn.yes{color:var(--red);border-right:1px solid var(--border)}
+.confirm-btn.yes:hover{background:rgba(229,57,53,0.15)}
+.confirm-btn.no{color:var(--muted)}
+.confirm-btn.no:hover{background:rgba(255,255,255,0.05)}
+</style>
+</head>
+<body>
+<div id="screen">
+
+  <!-- Status bar -->
+  <div id="statusbar">
+    <div class="sb-left">OWOS RECOVERY v1.0</div>
+    <div class="sb-right">
+      <span id="sb-time">--:--</span>
+      <span>RECOVERY MODE</span>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <div id="header">
+    <div class="hdr-top">
+      <div>
+        <div class="hdr-logo">OpenWebOS</div>
+        <div class="hdr-device">WebDevice · Build 1.0.2 · Recovery</div>
+      </div>
+      <div>
+        <div class="hdr-ver">TWRP-style</div>
+        <div class="hdr-status" id="hdr-status">READY</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div id="main">
+
+    <!-- Side nav -->
+    <div id="sidenav">
+      <div class="nav-btn active" onclick="showPanel('install')" id="nav-install">
+        <span class="nav-icon">💾</span>Install
+      </div>
+      <div class="nav-btn" onclick="showPanel('wipe')" id="nav-wipe">
+        <span class="nav-icon">🗑️</span>Wipe
+      </div>
+      <div class="nav-btn" onclick="showPanel('files')" id="nav-files">
+        <span class="nav-icon">📁</span>Files
+      </div>
+      <div class="nav-btn" onclick="showPanel('datetime')" id="nav-datetime">
+        <span class="nav-icon">🕐</span>Date/Time
+      </div>
+      <div class="nav-btn" onclick="showPanel('advanced')" id="nav-advanced">
+        <span class="nav-icon">⚙️</span>Advanced
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div id="content">
+
+      <!-- Log -->
+      <div style="padding:12px 12px 0">
+        <div id="log-output">OpenWebOS Recovery Mode<br>Build: 1.0.2 · WebDevice<br>Compiled: webOS kernel 1.0<br>Ready for commands.<br></div>
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+      </div>
+
+      <!-- Install panel -->
+      <div class="panel active" id="panel-install">
+        <div class="panel-title">Install / Restore</div>
+        <button class="action-btn success" onclick="doAction('resetPass')">
+          <span class="btn-icon">🔑</span>
+          <span class="btn-text"><span class="btn-label">Reset Password</span><span class="btn-sub">Change login password without wiping data</span></span>
+        </button>
+        <div id="pass-input-wrap" style="display:none">
+          <input type="password" class="twrp-input" id="new-pass" placeholder="Enter new password…">
+          <button class="action-btn success" onclick="confirmResetPass()">
+            <span class="btn-icon">✓</span>
+            <span class="btn-text"><span class="btn-label">Confirm New Password</span></span>
+          </button>
+        </div>
+        <button class="action-btn warn" onclick="doAction('fixBrick')">
+          <span class="btn-icon">🔧</span>
+          <span class="btn-text"><span class="btn-label">Fix Bricked System</span><span class="btn-sub">Resets date offset without wiping data</span></span>
+        </button>
+        <button class="action-btn" onclick="doAction('inspect')">
+          <span class="btn-icon">🔍</span>
+          <span class="btn-text"><span class="btn-label">Inspect Storage</span><span class="btn-sub">View current IndexedDB contents</span></span>
+        </button>
+      </div>
+
+      <!-- Wipe panel -->
+      <div class="panel" id="panel-wipe">
+        <div class="panel-title">Wipe</div>
+        <button class="action-btn danger" onclick="confirmAction('wipeAll','Wipe All Data?','This will permanently erase your name, password, wallpaper, dock, and all settings. You will go through setup again.')">
+          <span class="btn-icon">☢️</span>
+          <span class="btn-text"><span class="btn-label">Wipe All Data</span><span class="btn-sub">Factory reset — cannot be undone</span></span>
+        </button>
+        <button class="action-btn warn" onclick="confirmAction('wipeFiles','Clear Uploaded Files?','All files stored in OpenWebOS Files (IndexedDB) will be permanently deleted. Settings are kept.')">
+          <span class="btn-icon">🗂️</span>
+          <span class="btn-text"><span class="btn-label">Wipe Files</span><span class="btn-sub">Clears IndexedDB file storage only</span></span>
+        </button>
+        <button class="action-btn warn" onclick="confirmAction('wipeDateOffset','Reset Date Offset?','Resets the fake date back to real system time. Use this to recover from a bricked bootloop.')">
+          <span class="btn-icon">📅</span>
+          <span class="btn-text"><span class="btn-label">Reset Date Offset</span><span class="btn-sub">Fixes epoch bootloop without full wipe</span></span>
+        </button>
+      </div>
+
+      <!-- Files panel -->
+      <div class="panel" id="panel-files">
+        <div class="panel-title">File Manager</div>
+        <div id="files-list" style="font-size:10px;color:var(--muted);line-height:2">
+          <div style="color:var(--muted);font-size:10px">Loading files…</div>
+        </div>
+        <button class="action-btn" onclick="loadFiles()" style="margin-top:8px">
+          <span class="btn-icon">🔄</span>
+          <span class="btn-text"><span class="btn-label">Refresh</span></span>
+        </button>
+      </div>
+
+      <!-- Date/Time panel -->
+      <div class="panel" id="panel-datetime">
+        <div class="panel-title">Date &amp; Time</div>
+        <div id="dt-clock">
+          <div id="dt-clock-time">--:--:--</div>
+          <div id="dt-clock-date">Loading…</div>
+        </div>
+        <div id="dt-epoch-warn">⚠ EPOCH REACHED — SYSTEM WILL BRICK ON BOOT</div>
+        <div class="mode-tabs">
+          <button class="mode-tab active" id="dt-tab-auto" onclick="dtMode('auto')">⚡ AUTO</button>
+          <button class="mode-tab" id="dt-tab-manual" onclick="dtMode('manual')">✏ MANUAL</button>
+        </div>
+        <div id="dt-auto-panel">
+          <div class="section-label">Presets</div>
+          <div class="preset-grid">
+            <button class="preset-btn" onclick="dtJump('real')">TODAY (REAL)</button>
+            <button class="preset-btn" onclick="dtJump('-1d')">YESTERDAY</button>
+            <button class="preset-btn" onclick="dtJump('-7d')">-1 WEEK</button>
+            <button class="preset-btn" onclick="dtJump('-30d')">-1 MONTH</button>
+            <button class="preset-btn" onclick="dtJump('-365d')">-1 YEAR</button>
+            <button class="preset-btn" onclick="dtJump('1970-01-02')">JAN 2 1970</button>
+            <button class="preset-btn brick" onclick="dtJump('1970-01-01')">⚠ JAN 1 1970 — BRICK SYSTEM</button>
+          </div>
+        </div>
+        <div id="dt-manual-panel" style="display:none">
+          <div class="section-label">Set Date</div>
+          <input type="date" class="twrp-input" id="dt-date" min="1970-01-01">
+          <div class="section-label">Set Time</div>
+          <input type="time" class="twrp-input" id="dt-time">
+          <button class="action-btn success" onclick="dtApply()">
+            <span class="btn-icon">✓</span>
+            <span class="btn-text"><span class="btn-label">Apply Date &amp; Time</span></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Advanced panel -->
+      <div class="panel" id="panel-advanced">
+        <div class="panel-title">Advanced</div>
+        <button class="action-btn" onclick="doAction('inspect')">
+          <span class="btn-icon">🔍</span>
+          <span class="btn-text"><span class="btn-label">Inspect IndexedDB</span><span class="btn-sub">Dumps raw config data to log</span></span>
+        </button>
+        <button class="action-btn warn" onclick="confirmAction('wipeAll','Full Factory Reset?','Wipes ALL OpenWebOS data. You will need to go through setup again.')">
+          <span class="btn-icon">💣</span>
+          <span class="btn-text"><span class="btn-label">Factory Reset</span><span class="btn-sub">Nuclear option — wipes everything</span></span>
+        </button>
+        <div class="section-label">System Info</div>
+        <div id="sysinfo" style="font-size:10px;color:var(--muted);line-height:2;background:#000;border:1px solid var(--border);border-radius:4px;padding:10px"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Bottom bar -->
+  <div id="bottombar">
+    <div class="bb-text">OPENWEBOS RECOVERY · USE WITH CAUTION</div>
+    <div class="bb-status" id="bb-status">● SYSTEM READY</div>
+  </div>
+</div>
+
+<!-- Confirm overlay -->
+<div id="confirm-overlay">
+  <div class="confirm-box">
+    <div class="confirm-hdr" id="confirm-title">CONFIRM ACTION</div>
+    <div class="confirm-body" id="confirm-body">Are you sure?</div>
+    <div class="confirm-btns">
+      <button class="confirm-btn yes" id="confirm-yes" onclick="confirmYes()">YES</button>
+      <button class="confirm-btn no" onclick="confirmNo()">NO</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// IndexedDB helpers (reused from main OS)
+var _sysDb = null;
+
+function openSysDb() {
+  return new Promise(function(res, rej) {
+    if (_sysDb) return res(_sysDb);
+    var req = indexedDB.open('owos-system', 2);
+    req.onupgradeneeded = function(e) {
+      var db = e.target.result;
+      if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings', { keyPath: 'key' });
+      if (!db.objectStoreNames.contains('userinstalled-apps')) db.createObjectStore('userinstalled-apps', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('userinstalled-terminalapps')) db.createObjectStore('userinstalled-terminalapps', { keyPath: 'id' });
+    };
+    req.onsuccess = function(e) { _sysDb = e.target.result; res(_sysDb); };
+    req.onerror = function() { rej('sysdb error'); };
+  });
+}
+
+function sysGet(key) {
+  return openSysDb().then(function(db) {
+    return new Promise(function(res, rej) {
+      var r = db.transaction('settings', 'readonly').objectStore('settings').get(key);
+      r.onsuccess = function() { res(r.result ? r.result.value : null); };
+      r.onerror = rej;
+    });
+  });
+}
+
+function sysPut(key, value) {
+  return openSysDb().then(function(db) {
+    return new Promise(function(res, rej) {
+      var tx = db.transaction('settings', 'readwrite');
+      tx.objectStore('settings').put({ key: key, value: value });
+      tx.oncomplete = res;
+      tx.onerror = rej;
+    });
+  });
+}
+
+// State
+var _fakeDateOffset = 0;
+var EPOCH_MS = new Date('1970-01-01T00:00:00').getTime();
+var _pendingAction = null;
+var _dtMode = 'auto';
+
+// Load offset from IndexedDB
+sysGet('config').then(function(data) {
+  if (data && typeof data._fakeDateOffset !== 'undefined') {
+    _fakeDateOffset = data._fakeDateOffset;
+  }
+}).catch(function() {});
+
+// ── Clock ──────────────────────────────────────────────────
+function simNow() { return new Date(Date.now() + _fakeDateOffset); }
+function updateClocks() {
+  var s = simNow();
+  var isE = s.getTime() <= EPOCH_MS;
+  var t = s.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  var d = s.toLocaleDateString([], { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+  document.getElementById('dt-clock-time').textContent = t;
+  document.getElementById('dt-clock-time').style.color = isE ? 'var(--red)' : 'var(--orange)';
+  document.getElementById('dt-clock-date').textContent = d;
+  document.getElementById('dt-epoch-warn').style.display = isE ? 'block' : 'none';
+  document.getElementById('sb-time').textContent = s.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+updateClocks();
+setInterval(updateClocks, 1000);
+
+// ── Log ────────────────────────────────────────────────────
+function log(msg, color) {
+  var el = document.getElementById('log-output');
+  var line = document.createElement('div');
+  line.style.color = color || '#0f0';
+  line.textContent = '> ' + msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+function setStatus(msg, ok) {
+  document.getElementById('hdr-status').textContent = msg;
+  document.getElementById('hdr-status').style.color = ok === false ? 'var(--red)' : ok === true ? 'var(--green)' : 'var(--yellow)';
+  document.getElementById('bb-status').textContent = '● ' + msg;
+  document.getElementById('bb-status').style.color = ok === false ? 'var(--red)' : ok === true ? 'var(--green)' : 'var(--yellow)';
+}
+function progress(pct, cb) {
+  var fill = document.getElementById('progress-fill');
+  fill.style.width = pct + '%';
+  if (cb) setTimeout(function() { fill.style.width = '0%'; cb(); }, 600);
+}
+
+// ── Nav ────────────────────────────────────────────────────
+function showPanel(id) {
+  document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById('panel-' + id).classList.add('active');
+  document.getElementById('nav-' + id).classList.add('active');
+  if (id === 'files') loadFiles();
+  if (id === 'advanced') loadSysinfo();
+}
+
+// ── Actions ────────────────────────────────────────────────
+function doAction(action) {
+  if (action === 'resetPass') {
+    var w = document.getElementById('pass-input-wrap');
+    w.style.display = w.style.display === 'none' ? 'block' : 'none';
+    log('Password reset panel ' + (w.style.display === 'none' ? 'closed' : 'opened') + '.');
+  }
+  else if (action === 'fixBrick') {
+    progress(60, function() {
+      sysGet('config').then(function(data) {
+        if (!data) { log('No config data found.', '#f90'); setStatus('NO DATA', null); return; }
+        data._fakeDateOffset = 0;
+        sysPut('config', data).then(function() {
+          _fakeDateOffset = 0;
+          progress(100, function() { log('Date offset reset. System unbricked.', '#0f0'); setStatus('UNBRICKED', true); });
+        }).catch(function(e) { log('Error: ' + e.message, '#f00'); setStatus('ERROR', false); });
+      }).catch(function(e) { log('Error: ' + e.message, '#f00'); setStatus('ERROR', false); });
+    });
+  }
+  else if (action === 'inspect') {
+    sysGet('config').then(function(data) {
+      if (!data) { log('IndexedDB config: (empty)', '#f90'); return; }
+      log('user: ' + data.userName, '#0ff');
+      log('wp: ' + data.wpClass + ' | accent: ' + data.accentColor, '#0ff');
+      log('dock: [' + data.dockApps + ']', '#0ff');
+      log('dateOffset: ' + (_fakeDateOffset || 0) + 'ms', '#0ff');
+      setStatus('INSPECTED', true);
+    }).catch(function(e) { log('Error: ' + e.message, '#f00'); setStatus('ERROR', false); });
+  }
+  else if (action === 'wipeAll') {
+    progress(30, function() {
+      openSysDb().then(function(db) {
+        var tx = db.transaction(['settings', 'userinstalled-apps', 'userinstalled-terminalapps'], 'readwrite');
+        tx.objectStore('settings').clear();
+        tx.objectStore('userinstalled-apps').clear();
+        tx.objectStore('userinstalled-terminalapps').clear();
+        tx.oncomplete = function() {
+          progress(100, function() { log('All data wiped. Full factory reset complete.', '#f90'); setStatus('WIPED', null); });
+        };
+        tx.onerror = function() { log('Error wiping data.', '#f00'); setStatus('ERROR', false); };
+      }).catch(function(e) { log('Error: ' + e.message, '#f00'); setStatus('ERROR', false); });
+    });
+  }
+  else if (action === 'wipeFiles') {
+    progress(20, function() {
+      var req = indexedDB.open('owos-files', 1);
+      req.onsuccess = function(e) {
+        var tx = e.target.result.transaction('files', 'readwrite');
+        tx.objectStore('files').clear();
+        tx.oncomplete = function() { progress(100, function() { log('IndexedDB files cleared.', '#0f0'); setStatus('FILES WIPED', true); }); };
+        tx.onerror = function() { log('IDB error.', '#f00'); setStatus('ERROR', false); };
+      };
+      req.onerror = function() { log('Could not open file DB.', '#f00'); setStatus('ERROR', false); };
+      req.onupgradeneeded = function(e) { e.target.result.createObjectStore('files', { keyPath: 'path' }); };
+    });
+  }
+  else if (action === 'wipeDateOffset') {
+    progress(50, function() {
+      sysGet('config').then(function(data) {
+        if (!data) { log('No config data found.', '#f90'); return; }
+        data._fakeDateOffset = 0;
+        sysPut('config', data).then(function() {
+          _fakeDateOffset = 0;
+          progress(100, function() { log('Date offset cleared.', '#0f0'); setStatus('DATE RESET', true); });
+        }).catch(function(e) { log('Error: ' + e.message, '#f00'); setStatus('ERROR', false); });
+      }).catch(function(e) { log('Error: ' + e.message, '#f00'); setStatus('ERROR', false); });
+    });
+  }
+}
+
+function confirmResetPass() {
+  var p = document.getElementById('new-pass').value;
+  if (!p) { log('No password entered.', '#f90'); return; }
+  progress(50, function() {
+    sysGet('config').then(function(data) {
+      if (!data) { log('No config data found.', '#f90'); setStatus('NO DATA', null); return; }
+      data.userPass = p;
+      sysPut('config', data).then(function() {
+        document.getElementById('new-pass').value = '';
+        document.getElementById('pass-input-wrap').style.display = 'none';
+        progress(100, function() { log('Password reset for "' + data.userName + '".', '#0f0'); setStatus('PASS RESET', true); });
+      }).catch(function(e) { log('Error: ' + e.message, '#f00'); setStatus('ERROR', false); });
+    }).catch(function(e) { log('Error: ' + e.message, '#f00'); setStatus('ERROR', false); });
+  });
+}
+
+// ── Confirm dialog ─────────────────────────────────────────
+function confirmAction(action, title, body) {
+  _pendingAction = action;
+  document.getElementById('confirm-title').textContent = title;
+  document.getElementById('confirm-body').textContent = body;
+  document.getElementById('confirm-overlay').classList.add('show');
+}
+function confirmYes() {
+  document.getElementById('confirm-overlay').classList.remove('show');
+  if (_pendingAction) {
+    log('Executing: ' + _pendingAction + '…', '#f90');
+    doAction(_pendingAction);
+    _pendingAction = null;
+  }
+}
+function confirmNo() {
+  document.getElementById('confirm-overlay').classList.remove('show');
+  log('Action cancelled.');
+  _pendingAction = null;
+}
+
+// ── Date/Time ──────────────────────────────────────────────
+function dtMode(mode) {
+  _dtMode = mode;
+  document.getElementById('dt-auto-panel').style.display = mode === 'auto' ? 'block' : 'none';
+  document.getElementById('dt-manual-panel').style.display = mode === 'manual' ? 'block' : 'none';
+  document.getElementById('dt-tab-auto').className = 'mode-tab' + (mode === 'auto' ? ' active' : '');
+  document.getElementById('dt-tab-manual').className = 'mode-tab' + (mode === 'manual' ? ' active' : '');
+  if (mode === 'manual') {
+    var s = simNow();
+    var yyyy = s.getFullYear(), mm = String(s.getMonth() + 1).padStart(2, '0'), dd = String(s.getDate()).padStart(2, '0');
+    var hh = String(s.getHours()).padStart(2, '0'), mi = String(s.getMinutes()).padStart(2, '0');
+    document.getElementById('dt-date').value = yyyy + '-' + mm + '-' + dd;
+    document.getElementById('dt-time').value = hh + ':' + mi;
+  }
+}
+function dtJump(preset) {
+  var cur = Date.now() + _fakeDateOffset;
+  var target;
+  if (preset === 'real') { _fakeDateOffset = 0; log('Date reset to real system time.', '#0f0'); }
+  else if (preset === '-1d') { _fakeDateOffset = (cur - 86400000) - Date.now(); log('Date set to yesterday.', '#0f0'); }
+  else if (preset === '-7d') { _fakeDateOffset = (cur - 7 * 86400000) - Date.now(); log('Date set to -7 days.', '#0f0'); }
+  else if (preset === '-30d') { _fakeDateOffset = (cur - 30 * 86400000) - Date.now(); log('Date set to -30 days.', '#0f0'); }
+  else if (preset === '-365d') { _fakeDateOffset = (cur - 365 * 86400000) - Date.now(); log('Date set to -1 year.', '#0f0'); }
+  else if (preset === '1970-01-02') { _fakeDateOffset = new Date('1970-01-02T12:00:00').getTime() - Date.now(); log('Date set to Jan 2 1970.', '#f90'); }
+  else if (preset === '1970-01-01') { _fakeDateOffset = EPOCH_MS - Date.now(); log('⚠ EPOCH SET. System will brick on next boot.', '#f00'); }
+  saveOffset();
+  setStatus('DATE SET', simNow().getTime() > EPOCH_MS);
+}
+function dtApply() {
+  var dv = document.getElementById('dt-date');
+  var tv = document.getElementById('dt-time');
+  if (!dv || !dv.value) { log('No date selected.', '#f90'); return; }
+  var target = new Date(dv.value + 'T' + (tv && tv.value ? tv.value + ':00' : '12:00:00'));
+  if (isNaN(target.getTime())) { log('Invalid date/time.', '#f00'); return; }
+  _fakeDateOffset = target.getTime() - Date.now();
+  log('Date manually set to ' + target.toLocaleDateString() + '.', '#0f0');
+  if (target.getTime() <= EPOCH_MS) log('⚠ EPOCH REACHED. Brick imminent.', '#f00');
+  saveOffset();
+  setStatus('DATE SET', target.getTime() > EPOCH_MS);
+}
+function saveOffset() {
+  sysGet('config').then(function(data) {
+    if (!data) return;
+    data._fakeDateOffset = _fakeDateOffset;
+    sysPut('config', data).catch(console.error);
+  }).catch(console.error);
+}
+
+// ── Files ──────────────────────────────────────────────────
+function loadFiles() {
+  var el = document.getElementById('files-list');
+  el.innerHTML = '<div style="color:#888;font-size:10px">Loading…</div>';
+  var req = indexedDB.open('owos-files', 1);
+  req.onsuccess = function(e) {
+    var db = e.target.result;
+    try {
+      var tx = db.transaction('files', 'readonly');
+      var r = tx.objectStore('files').getAll();
+      r.onsuccess = function() {
+        var all = r.result;
+        if (!all || !all.length) { el.innerHTML = '<div style="color:#888;font-size:10px">No files stored.</div>'; return; }
+        el.innerHTML = all.map(function(f) {
+          var kb = f.size < 1024 ? f.size + 'B' : (f.size < 1048576 ? (f.size / 1024).toFixed(1) + 'KB' : (f.size / 1048576).toFixed(1) + 'MB');
+          return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #222;font-size:10px"><span style="color:#0f0">' + f.path + '</span><span style="color:#888">' + kb + '</span></div>';
+        }).join('');
+        log('File list loaded. ' + all.length + ' file(s).', '#0f0');
+      };
+    } catch(err) { el.innerHTML = '<div style="color:#f00;font-size:10px">Error reading files.</div>'; }
+  };
+  req.onupgradeneeded = function(e) { e.target.result.createObjectStore('files', { keyPath: 'path' }); };
+  req.onerror = function() { el.innerHTML = '<div style="color:#f00;font-size:10px">Could not open DB.</div>'; };
+}
+
+// ── Sysinfo ────────────────────────────────────────────────
+function loadSysinfo() {
+  var el = document.getElementById('sysinfo');
+  sysGet('config').then(function(data) {
+    data = data || {};
+    el.innerHTML = [
+      'USER: ' + (data.userName || 'N/A'),
+      'WALLPAPER: ' + (data.wpClass || 'N/A'),
+      'ACCENT: ' + (data.accentColor || 'N/A'),
+      'FS_MODE: ' + (data.fsEnabled ? 'ON' : 'OFF'),
+      'WIDGETS: ' + (data.widgetsEnabled ? 'ON' : 'OFF'),
+      'DATE_OFFSET: ' + (_fakeDateOffset || 0) + 'ms',
+      'SIM_DATE: ' + simNow().toISOString(),
+      'STORAGE: IndexedDB',
+      'BUILD: OpenWebOS 1.0.2',
+    ].map(function(s) { return '<div>' + s + '</div>'; }).join('');
+  }).catch(function(e) { el.innerHTML = '<div style="color:#f00">Error reading data.</div>'; });
+}
+</script>
+</body>
+</html>
