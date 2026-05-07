@@ -68,6 +68,10 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--darker);font-f
 .twrp-input{width:100%;background:#000;border:1px solid var(--border);border-radius:4px;padding:9px 12px;color:#0f0;font-size:12px;outline:none;font-family:'Roboto Mono',monospace;margin-bottom:8px}
 .twrp-input:focus{border-color:var(--orange)}
 .twrp-input[type="date"],.twrp-input[type="time"]{color-scheme:dark;color:var(--text)}
+.profile-select{color:var(--text);background:#000}
+.profile-select option{background:#000;color:var(--text)}
+.profile-card{background:#000;border:1px solid var(--border);border-radius:4px;padding:9px 12px;margin-bottom:8px;font-size:10px;line-height:1.8;color:var(--muted)}
+.profile-card strong{color:var(--orange);font-weight:700}
 
 /* Section label */
 .section-label{font-size:9px;font-weight:700;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid #2a2a2a}
@@ -178,6 +182,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--darker);font-f
           <span class="btn-text"><span class="btn-label">Reset Password</span><span class="btn-sub">Change login password without wiping data</span></span>
         </button>
         <div id="pass-input-wrap" style="display:none">
+          <div class="section-label">Target Profile</div>
+          <select class="twrp-input profile-select" id="profile-select" onchange="renderSelectedProfile()"></select>
+          <div class="profile-card" id="selected-profile">Loading profiles…</div>
           <input type="password" class="twrp-input" id="new-pass" placeholder="Enter new password…">
           <button class="action-btn success" onclick="confirmResetPass()">
             <span class="btn-icon">✓</span>
@@ -191,6 +198,10 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--darker);font-f
         <button class="action-btn" onclick="doAction('inspect')">
           <span class="btn-icon">🔍</span>
           <span class="btn-text"><span class="btn-label">Inspect Storage</span><span class="btn-sub">View current IndexedDB contents</span></span>
+        </button>
+        <button class="action-btn" onclick="repairProfiles()">
+          <span class="btn-icon">👥</span>
+          <span class="btn-text"><span class="btn-label">Repair Profiles</span><span class="btn-sub">Seed or normalize multi-user profile records</span></span>
         </button>
       </div>
 
@@ -303,12 +314,13 @@ var _sysDb = null;
 function openSysDb() {
   return new Promise(function(res, rej) {
     if (_sysDb) return res(_sysDb);
-    var req = indexedDB.open('owos-system', 2);
+    var req = indexedDB.open('owos-system', 3);
     req.onupgradeneeded = function(e) {
       var db = e.target.result;
       if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings', { keyPath: 'key' });
       if (!db.objectStoreNames.contains('userinstalled-apps')) db.createObjectStore('userinstalled-apps', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('userinstalled-terminalapps')) db.createObjectStore('userinstalled-terminalapps', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('repos')) db.createObjectStore('repos', { keyPath: 'id' });
     };
     req.onsuccess = function(e) { _sysDb = e.target.result; res(_sysDb); };
     req.onerror = function() { rej('sysdb error'); };
@@ -336,17 +348,130 @@ function sysPut(key, value) {
   });
 }
 
+function sameUser(profile, config) {
+  if (!profile || !config) return false;
+  return profile.name === config.userName && profile.pass === config.userPass;
+}
+
+function profileFallback(config) {
+  if (!config || !config.userName) return [];
+  return [{
+    id: 'u_recovered_' + Date.now(),
+    name: config.userName,
+    pass: config.userPass || '',
+    accent: config.accentColor || '#e94560',
+    wp: config.wpClass || 'wp0',
+    avatar: config.userAvatar || '',
+    wallpaper: config.userWallpaper || '',
+    isAdmin: true
+  }];
+}
+
+function saveProfiles(profiles) {
+  return sysPut('profiles', profiles);
+}
+
+function loadProfiles() {
+  return Promise.all([sysGet('config'), sysGet('profiles')]).then(function(results) {
+    _config = results[0] || null;
+    var profiles = Array.isArray(results[1]) ? results[1] : [];
+    if (!profiles.length) {
+      profiles = profileFallback(_config);
+      if (profiles.length) {
+        return saveProfiles(profiles).then(function() {
+          _profiles = profiles;
+          renderProfileSelect();
+          log('Profile store was missing. Seeded from current config.', '#f90');
+          return profiles;
+        });
+      }
+    }
+    _profiles = profiles.map(function(p, i) {
+      p.id = p.id || ('u_recovered_' + Date.now() + '_' + i);
+      p.name = p.name || ('User ' + (i + 1));
+      p.pass = typeof p.pass === 'string' ? p.pass : '';
+      p.accent = p.accent || '#e94560';
+      p.wp = p.wp || 'wp0';
+      p.avatar = p.avatar || '';
+      p.wallpaper = p.wallpaper || '';
+      p.isAdmin = i === 0 ? true : !!p.isAdmin;
+      return p;
+    });
+    renderProfileSelect();
+    return _profiles;
+  });
+}
+
+function selectedProfile() {
+  var sel = document.getElementById('profile-select');
+  var id = sel ? sel.value : '';
+  return _profiles.find(function(p) { return p.id === id; }) || _profiles[0] || null;
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+  });
+}
+
+function renderProfileSelect() {
+  var sel = document.getElementById('profile-select');
+  if (!sel) return;
+  if (!_profiles.length) {
+    sel.innerHTML = '<option value="">No profiles found</option>';
+    renderSelectedProfile();
+    return;
+  }
+  var old = sel.value;
+  sel.innerHTML = _profiles.map(function(p) {
+    var current = sameUser(p, _config) ? ' · current' : '';
+    var admin = p.isAdmin ? ' · admin' : '';
+    return '<option value="' + escapeHtml(p.id) + '">' + escapeHtml(p.name + current + admin) + '</option>';
+  }).join('');
+  if (old && _profiles.find(function(p) { return p.id === old; })) sel.value = old;
+  renderSelectedProfile();
+}
+
+function renderSelectedProfile() {
+  var box = document.getElementById('selected-profile');
+  if (!box) return;
+  var p = selectedProfile();
+  if (!p) {
+    box.innerHTML = 'No OpenWebOS profiles were found. Use Repair Profiles if config data exists.';
+    return;
+  }
+  box.innerHTML = 'Selected: <strong>' + escapeHtml(p.name) + '</strong><br>'
+    + 'Role: ' + (p.isAdmin ? 'admin' : 'standard') + '<br>'
+    + 'Accent: ' + escapeHtml(p.accent || 'N/A') + '<br>'
+    + 'Status: ' + (sameUser(p, _config) ? '<strong>current login profile</strong>' : 'saved profile');
+}
+
+function repairProfiles() {
+  progress(50, function() {
+    loadProfiles().then(function(profiles) {
+      if (!profiles.length) { log('No config or profiles available to repair.', '#f90'); setStatus('NO PROFILES', null); return; }
+      return saveProfiles(profiles).then(function() {
+        progress(100, function() { log('Profiles repaired. ' + profiles.length + ' profile(s) ready.', '#0f0'); setStatus('PROFILES OK', true); });
+      });
+    }).catch(function(e) { log('Profile repair failed: ' + (e.message || e), '#f00'); setStatus('ERROR', false); });
+  });
+}
+
 // State
 var _fakeDateOffset = 0;
 var EPOCH_MS = new Date('1970-01-01T00:00:00').getTime();
 var _pendingAction = null;
 var _dtMode = 'auto';
+var _profiles = [];
+var _config = null;
 
 // Load offset from IndexedDB
 sysGet('config').then(function(data) {
+  _config = data || null;
   if (data && typeof data._fakeDateOffset !== 'undefined') {
     _fakeDateOffset = data._fakeDateOffset;
   }
+  return loadProfiles();
 }).catch(function() {});
 
 // ── Clock ──────────────────────────────────────────────────
@@ -401,6 +526,7 @@ function doAction(action) {
   if (action === 'resetPass') {
     var w = document.getElementById('pass-input-wrap');
     w.style.display = w.style.display === 'none' ? 'block' : 'none';
+    if (w.style.display !== 'none') loadProfiles();
     log('Password reset panel ' + (w.style.display === 'none' ? 'closed' : 'opened') + '.');
   }
   else if (action === 'fixBrick') {
@@ -416,9 +542,12 @@ function doAction(action) {
     });
   }
   else if (action === 'inspect') {
-    sysGet('config').then(function(data) {
+    Promise.all([sysGet('config'), loadProfiles()]).then(function(results) {
+      var data = results[0];
+      var profiles = results[1] || [];
       if (!data) { log('IndexedDB config: (empty)', '#f90'); return; }
       log('user: ' + data.userName, '#0ff');
+      log('profiles: ' + profiles.length + ' [' + profiles.map(function(p) { return p.name; }).join(', ') + ']', '#0ff');
       log('wp: ' + data.wpClass + ' | accent: ' + data.accentColor, '#0ff');
       log('dock: [' + data.dockApps + ']', '#0ff');
       log('dateOffset: ' + (_fakeDateOffset || 0) + 'ms', '#0ff');
@@ -470,13 +599,23 @@ function confirmResetPass() {
   var p = document.getElementById('new-pass').value;
   if (!p) { log('No password entered.', '#f90'); return; }
   progress(50, function() {
-    sysGet('config').then(function(data) {
-      if (!data) { log('No config data found.', '#f90'); setStatus('NO DATA', null); return; }
-      data.userPass = p;
-      sysPut('config', data).then(function() {
+    Promise.all([sysGet('config'), loadProfiles()]).then(function(results) {
+      var data = results[0];
+      var profiles = results[1] || [];
+      var target = selectedProfile();
+      if (!target) { log('No profile selected.', '#f90'); setStatus('NO PROFILE', null); return; }
+      target.pass = p;
+      var writes = [saveProfiles(profiles)];
+      if (data && target.name === data.userName) {
+        data.userPass = p;
+        writes.push(sysPut('config', data));
+        _config = data;
+      }
+      Promise.all(writes).then(function() {
         document.getElementById('new-pass').value = '';
         document.getElementById('pass-input-wrap').style.display = 'none';
-        progress(100, function() { log('Password reset for "' + data.userName + '".', '#0f0'); setStatus('PASS RESET', true); });
+        renderProfileSelect();
+        progress(100, function() { log('Password reset for "' + target.name + '".', '#0f0'); setStatus('PASS RESET', true); });
       }).catch(function(e) { log('Error: ' + e.message, '#f00'); setStatus('ERROR', false); });
     }).catch(function(e) { log('Error: ' + e.message, '#f00'); setStatus('ERROR', false); });
   });
@@ -579,10 +718,14 @@ function loadFiles() {
 // ── Sysinfo ────────────────────────────────────────────────
 function loadSysinfo() {
   var el = document.getElementById('sysinfo');
-  sysGet('config').then(function(data) {
+  Promise.all([sysGet('config'), loadProfiles()]).then(function(results) {
+    var data = results[0];
+    var profiles = results[1] || [];
     data = data || {};
     el.innerHTML = [
       'USER: ' + (data.userName || 'N/A'),
+      'PROFILES: ' + profiles.length,
+      'PROFILE_NAMES: ' + (profiles.map(function(p) { return p.name + (p.isAdmin ? ' (admin)' : ''); }).join(', ') || 'N/A'),
       'WALLPAPER: ' + (data.wpClass || 'N/A'),
       'ACCENT: ' + (data.accentColor || 'N/A'),
       'FS_MODE: ' + (data.fsEnabled ? 'ON' : 'OFF'),
