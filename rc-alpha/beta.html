@@ -1279,6 +1279,8 @@ function renameFolder(folderId){
 
 // ── Window management ─────────────────────────────────────
 var cardsOverview=false,_cardsActiveId=null,_cardsGesture=null,_cardsGestureBound=false,_cardsWheel={x:0,y:0,t:null},_cardsWheelOpen={y:0,t:null,last:0},_cardsIgnoreWheelUntil=0,_cardsSuppressClickUntil=0,_cardsCloseUntil=0;
+var _cardsOpenEdgeW=110; // px from left/right edge to allow opening overview
+var _cardsOpenEdgeH=110; // px from bottom edge to allow opening overview
 function cardIds(){return Object.keys(openApps).filter(function(id){return document.getElementById('card-'+id);});}
 function syncCardModeState(){
   var ids=cardIds();
@@ -1393,21 +1395,26 @@ function handleCardsWheel(e){
     // Heuristic: ignore coarse wheel events (often a physical mouse wheel).
     // Trackpads tend to emit many small deltas with deltaMode 0.
     if(e.deltaMode!==0)return;
-    if(Math.abs(e.deltaY)>80)return;
-    // Require gesture to start near the bottom (no visible bar needed).
-    var bottomPad=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--launcher-h'),10)||64;
-    if(typeof e.clientY==='number'&&e.clientY<(window.innerHeight-bottomPad-24))return;
+    if(Math.abs(e.deltaY)>120)return;
+    // Require gesture to start in bottom-left or bottom-right corner.
+    var cx=typeof e.clientX==='number'?e.clientX:null;
+    var cy=typeof e.clientY==='number'?e.clientY:null;
+    if(cx===null||cy===null)return;
+    var inBottom=cy>=(window.innerHeight-_cardsOpenEdgeH);
+    var inLeft=cx<=_cardsOpenEdgeW;
+    var inRight=cx>=(window.innerWidth-_cardsOpenEdgeW);
+    if(!(inBottom&&(inLeft||inRight)))return;
     // Normalize wheel deltaY and accumulate briefly to avoid accidental triggers.
     var my=1;
     if(e.deltaMode===1)my=16;
     else if(e.deltaMode===2)my=window.innerHeight;
     var now=Date.now();
-    if(now-_cardsWheelOpen.last>260)_cardsWheelOpen.y=0;
+    if(now-_cardsWheelOpen.last>360)_cardsWheelOpen.y=0;
     _cardsWheelOpen.last=now;
     _cardsWheelOpen.y+=(e.deltaY*my);
     clearTimeout(_cardsWheelOpen.t);
-    _cardsWheelOpen.t=setTimeout(function(){_cardsWheelOpen.y=0;},220);
-    if(_cardsWheelOpen.y>420){
+    _cardsWheelOpen.t=setTimeout(function(){_cardsWheelOpen.y=0;},300);
+    if(_cardsWheelOpen.y>180){
       e.preventDefault();
       _cardsWheelOpen.y=0;
       showCardsOverview();
@@ -1477,6 +1484,11 @@ function setupCardsGestureLayer(){
     if(!cardsEnabled)return;
     // Ignore pointer gestures that start in scrollable app content (these are normal scrolls).
     if(_cardsScrollableAncestor(e.target))return;
+    // Start must be in bottom-left or bottom-right corner.
+    var inBottom=e.clientY>=(window.innerHeight-_cardsOpenEdgeH);
+    var inLeft=e.clientX<=_cardsOpenEdgeW;
+    var inRight=e.clientX>=(window.innerWidth-_cardsOpenEdgeW);
+    if(!(inBottom&&(inLeft||inRight)))return;
     start={x:e.clientX,y:e.clientY,target:e.target};
   });
   desktop.addEventListener('pointerup',function(e){
@@ -1492,7 +1504,7 @@ function setupCardsGestureLayer(){
       return;
     }
     // Activate overview via swipe up (touch/pen/mouse drag), except inside scrollable app content.
-    if(!cardsOverview&&dy<-65&&ay>ax)showCardsOverview();
+    if(!cardsOverview&&dy<-45&&ay>ax)showCardsOverview();
   });
   desktop.addEventListener('click',function(e){
     if(!cardsEnabled||!cardsOverview||Date.now()<_cardsSuppressClickUntil)return;
